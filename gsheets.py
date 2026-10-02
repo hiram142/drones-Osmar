@@ -1,102 +1,101 @@
-    return [values_by_name[column] for column in SCHEMAS["Gastos"]], expense_id
+import streamlit as st
+import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 
+# ─────────────────────────────────────────────────────────
+# CONFIGURACIÓN DE CONEXIÓN
+# ─────────────────────────────────────────────────────────
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
-def add_rows(sheet_name: str, records: Sequence[Mapping[str, Any]]) -> list[str]:
-    """Validate and append one or more rows; return their generated or given IDs.
+@st.cache_resource(show_spinner="Conectando a Google Sheets...")
+def init_connection():
+    # Cargar credenciales desde st.secrets
+    secrets = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(secrets, scopes=SCOPES)
+    client = gspread.authorize(creds)
+    
+    # Abrir el documento usando el ID
+    spreadsheet_id = st.secrets["google_sheets"]["spreadsheet_id"]
+    return client.open_by_key(spreadsheet_id)
 
-    For ``Operaciones``, each mapping uses the sheet column names. A ``Vuelo``
-    needs ``Cliente``, ``Concepto``, ``Hectareas`` and ``Costo_HA``; ``Debe`` is
-    calculated and ``Haber`` is zero. An ``Abono`` needs ``Cliente``,
-    ``Concepto`` and ``Haber``; ``Debe`` is zero. For ``Gastos``, pass
-    ``Concepto`` and positive ``Importe``. ``Fecha`` defaults to today's date in
-    Mexico City and IDs are generated when omitted.
-    """
-    if sheet_name not in SCHEMAS:
-        raise ValueError(
-            f"Hoja no válida: {sheet_name!r}. Usa una de: {', '.join(SCHEMAS)}."
-        )
-    if isinstance(records, (str, bytes)) or not isinstance(records, Sequence):
-        raise TypeError("records debe ser una lista o secuencia de diccionarios.")
-    if not records:
-        return []
-    if any(not isinstance(record, Mapping) for record in records):
-        raise TypeError("Cada fila debe ser un diccionario de columnas y valores.")
-
-    normalize = _operation_row if sheet_name == "Operaciones" else _expense_row
-    normalized = [normalize(record) for record in records]
-    worksheet = _worksheet(sheet_name)
-    sheet_values = _check_headers(worksheet, sheet_name, allow_empty=False)
-    existing_ids = {row[0].strip() for row in sheet_values[1:] if row and row[0].strip()}
-    new_ids = [record_id for _, record_id in normalized]
-    duplicate_ids = existing_ids.intersection(new_ids)
-    if len(new_ids) != len(set(new_ids)):
-        raise ValueError("La solicitud contiene IDs duplicados.")
-    if duplicate_ids:
-        raise ValueError(
-            "Ya existe una fila con este ID: " + ", ".join(sorted(duplicate_ids))
-        )
+# ─────────────────────────────────────────────────────────
+# LECTURA DE DATOS
+# ─────────────────────────────────────────────────────────
+def read_df(worksheet_name):
+    """Lee una hoja y la devuelve como DataFrame."""
     try:
-        worksheet.append_rows(
-            [row for row, _ in normalized],
-            value_input_option="USER_ENTERED",
-            insert_data_option="INSERT_ROWS",
-        )
-    except Exception as exc:
-        raise GoogleSheetsError(
-            f"No se pudieron agregar filas a {sheet_name!r}. Comprueba que la cuenta "
-            "de servicio tenga permiso de edición."
-        ) from exc
-    return [record_id for _, record_id in normalized]
+        sheet = init_connection().worksheet(worksheet_name)
+        data = sheet.get_all_records()
+        if not data:
+            # Si está vacío, devolvemos un DataFrame vacío pero con las columnas correctas
+            if worksheet_name == "Operaciones":
+                return pd.DataFrame(columns=["ID", "Tipo", "Cliente", "Concepto", "Fecha", "Hectareas", "Costo_ha", "Importe"])
+            elif worksheet_name == "Gastos":
+                return pd.DataFrame(columns=["ID", "Concepto", "Importe", "Fecha"])
+            return pd.DataFrame()
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Error al leer la hoja {worksheet_name}: {e}")
+        return pd.DataFrame()
 
+# ─────────────────────────────────────────────────────────
+# ESCRITURA DE DATOS
+# ─────────────────────────────────────────────────────────
+def generate_id(worksheet_name):
+    """Genera un ID simple basado en el número de filas."""
+    df = read_df(worksheet_name)
+    if df.empty:
+        return 1
+    # Asume que la columna ID existe y es numérica
+    try:
+        return int(df["ID"].max()) + 1
+    except:
+        return len(df) + 1
 
-def add_row(sheet_name: str, record: Mapping[str, Any]) -> str:
-    """Append a single validated row and return its ID."""
-    return add_rows(sheet_name, [record])[0]
+def add_operation(tipo, cliente, concepto, fecha, hectareas=0, costo_ha=0, importe=0):
+    """Añade un registro a la hoja 'Operaciones'."""
+    try:
+        sheet = init_connection().worksheet("Operaciones")
+        new_id = generate_id("Operaciones")
+        
+        # Si es un vuelo y no tiene importe, lo calculamos
+        if tipo == "Vuelo" and importe == 0 and hectareas > 0 and costo_ha > 0:
+            importe = float(hectareas) * float(costo_ha)
+            
+        row = [
+            new_id,
+            tipo,
+            cliente,
+            concepto,
+            str(fecha),
+            float(hectareas) if hectareas else 0,
+            float(costo_ha) if costo_ha else 0,
+            float(importe)
+        ]
+        sheet.append_row(row)
+        return True
+    except Exception as e:
+        st.error(f"Error al guardar operación: {e}")
+        return False
 
-
-def add_operation(
-    tipo: str,
-    cliente: str,
-    concepto: str,
-    *,
-    fecha: date | datetime | str | None = None,
-    hectareas: Any | None = None,
-    costo_ha: Any | None = None,
-    importe: Any | None = None,
-    operation_id: str | None = None,
-) -> str:
-    """Add a flight charge or customer payment using app-friendly arguments.
-
-    A flight's amount is derived from hectares times cost per hectare. For an
-    abono, ``importe`` is the amount received.
-    """
-    kind = _text(tipo, "Tipo").casefold()
-    record: dict[str, Any] = {
-        "Fecha": fecha,
-        "Tipo": kind,
-        "Cliente": cliente,
-        "Concepto": concepto,
-    }
-    if operation_id is not None:
-        record["ID_Operacion"] = operation_id
-    if kind == "vuelo":
-        record.update({"Hectareas": hectareas, "Costo_HA": costo_ha})
-    elif kind == "abono":
-        record["Haber"] = importe
-    else:
-        raise ValueError("Tipo debe ser 'Vuelo' o 'Abono'.")
-    return add_row("Operaciones", record)
-
-
-def add_expense(
-    concepto: str,
-    importe: Any,
-    *,
-    fecha: date | datetime | str | None = None,
-    expense_id: str | None = None,
-) -> str:
-    """Add an operating expense and return its generated ID."""
-    record = {"Fecha": fecha, "Concepto": concepto, "Importe": importe}
-    if expense_id is not None:
-        record["ID_Gasto"] = expense_id
-    return add_row("Gastos", record)
+def add_expense(concepto, importe, fecha):
+    """Añade un registro a la hoja 'Gastos'."""
+    try:
+        sheet = init_connection().worksheet("Gastos")
+        new_id = generate_id("Gastos")
+        
+        row = [
+            new_id,
+            concepto,
+            float(importe),
+            str(fecha)
+        ]
+        sheet.append_row(row)
+        return True
+    except Exception as e:
+        st.error(f"Error al guardar gasto: {e}")
+        return False
