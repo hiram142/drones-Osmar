@@ -309,7 +309,7 @@ df_gastos = lumina.obtener_gastos()
 st.header("📊 Resumen Financiero y Utilidades")
 
 # 1. CÁLCULO DE UTILIDADES Y REPARTO 60/40
-ingresos_totales = df_ops[df_ops['Tipo'] == 'Abono']['Importe'].sum()
+ingresos_totales = df_ops['Haber'].sum()
 gastos_totales = df_gastos['Importe'].sum()
 utilidad_neta = ingresos_totales - gastos_totales
 
