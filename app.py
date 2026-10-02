@@ -26,7 +26,7 @@ st.set_page_config(page_title="Fumigación · Control", page_icon="🚁",
 # 2. CAPA DE DATOS (CONEXIÓN CORREGIDA CON GSHEETS.PY)
 # ─────────────────────────────────────────────────────────────
 try:
-    import lumina  # módulo del proyecto
+    import gsheets as lumina
     LUMINA_OK = True
 except ImportError:
     LUMINA_OK = False
