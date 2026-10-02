@@ -31,18 +31,19 @@ try:
 except ImportError:
     LUMINA_OK = False
 
-# Agregamos Hectareas y Costo_HA para que la tabla las pueda mostrar
-COLS_OPS = ["Fecha", "Cliente", "Concepto", "Hectareas", "Costo_HA", "Debe", "Haber"]
-COLS_GAS = ["Fecha", "Concepto", "Importe"] 
+COLS_OPS = ["Fecha", "Cliente", "Concepto", "Debe", "Haber"]
+COLS_GAS = ["Fecha", "Concepto", "Importe"]
 
 def _demo_state() -> None:
     if "demo_ops" not in st.session_state:
         st.session_state.demo_ops = pd.DataFrame([
-            ["2026-09-02", "Rancho La Esperanza", "Vuelo · Maíz", 40, 250, 10000, 0],
-            ["2026-09-10", "Rancho La Esperanza", "Abono · Efectivo", 0, 0, 0, 4000],
+            ["2026-09-02", "Rancho La Esperanza", "Vuelo · Maíz · 40 ha × $250", 10000, 0],
+            ["2026-09-10", "Rancho La Esperanza", "Abono · Efectivo", 0, 4000],
+            ["2026-09-12", "Agrícola Del Valle", "Vuelo · Chile · 25 ha × $300", 7500, 0],
         ], columns=COLS_OPS)
         st.session_state.demo_gas = pd.DataFrame(
-            [["2026-09-03", "Combustible", 850]], columns=COLS_GAS)
+            [["2026-09-03", "Combustible", 850], ["2026-09-12", "Agroquímicos", 1200]],
+            columns=COLS_GAS)
 
 @st.cache_data(ttl=30, show_spinner=False)
 def leer_operaciones(_v: int) -> pd.DataFrame:
@@ -50,7 +51,7 @@ def leer_operaciones(_v: int) -> pd.DataFrame:
           (_demo_state(), st.session_state.demo_ops)[1])
     df = pd.DataFrame(df).reindex(columns=COLS_OPS)
     df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
-    for c in ("Debe", "Haber", "Hectareas", "Costo_HA"):
+    for c in ("Debe", "Haber"):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
     return df
 
@@ -71,7 +72,7 @@ def guardar_vuelo(fecha, cliente, cultivo, hectareas, precio_ha, notas) -> None:
     else:
         _demo_state()
         total = round(hectareas * precio_ha, 2)
-        st.session_state.demo_ops.loc[len(st.session_state.demo_ops)] = [str(fecha), cliente, concepto, hectareas, precio_ha, total, 0]
+        st.session_state.demo_ops.loc[len(st.session_state.demo_ops)] = [str(fecha), cliente, concepto, total, 0]
 
 def guardar_abono(fecha, cliente, monto, metodo, notas) -> None:
     concepto = f"Abono · {metodo}" + (f" · {notas}" if notas else "")
@@ -80,7 +81,7 @@ def guardar_abono(fecha, cliente, monto, metodo, notas) -> None:
                              fecha=str(fecha), importe=monto)
     else:
         _demo_state()
-        st.session_state.demo_ops.loc[len(st.session_state.demo_ops)] = [str(fecha), cliente, concepto, 0, 0, 0, monto]
+        st.session_state.demo_ops.loc[len(st.session_state.demo_ops)] = [str(fecha), cliente, concepto, 0, monto]
 
 def guardar_gasto(fecha, tipo, monto, notas) -> None:
     concepto = tipo + (f" · {notas}" if notas else "")
@@ -103,8 +104,12 @@ h1{font-size:1.7rem!important;margin-bottom:.2rem;}
 h2,h3{font-size:1.3rem!important;}
 .stTextInput input,.stNumberInput input,.stDateInput input,.stTextArea textarea,
 .stSelectbox div[data-baseweb="select"]>div{min-height:3.4rem;font-size:1.15rem!important;border:2px solid var(--ink)!important;border-radius:12px!important;background:#fff;}
+.stTextArea textarea{min-height:5rem;}
+.stNumberInput button{min-height:3.4rem;min-width:3rem;}
+label p{font-size:1.05rem!important;font-weight:600;}
 .stButton>button,.stDownloadButton>button{width:100%;min-height:3.6rem;font-size:1.2rem;font-weight:700;border-radius:14px;border:2px solid var(--field-dark);}
 .stButton>button[kind="primary"]{background:var(--field);color:#fff;}
+.stDownloadButton>button{background:#fff;color:var(--field-dark);}
 .stTabs [data-baseweb="tab-list"]{gap:0;border-bottom:3px solid var(--ink);}
 .stTabs [data-baseweb="tab"]{flex:1;height:3.4rem;font-size:1rem;font-weight:700;padding:0 .2rem;}
 .stTabs [aria-selected="true"]{background:var(--sun);color:var(--ink);}
@@ -114,6 +119,10 @@ h2,h3{font-size:1.3rem!important;}
 .big.saldo{border-color:var(--debt);} .big.saldo .num{color:var(--debt);}
 .big.ok .num{color:var(--field);}
 .big.total{background:var(--field);color:#fff;border-color:var(--field-dark);} .big.total .lbl{color:#d6e8dc;}
+.mov{display:flex;justify-content:space-between;gap:.8rem;padding:.8rem 0;border-bottom:1px solid var(--line);}
+.mov .t{font-size:.95rem;word-break:break-word;} .mov .f{font-size:.8rem;color:#5b685f;}
+.mov .m{font-weight:800;white-space:nowrap;font-size:1.05rem;}
+.cargo{color:var(--debt);} .abono{color:var(--field);}
 </style>
 """, unsafe_allow_html=True)
 
@@ -142,7 +151,7 @@ def terminar_guardado(msg: str) -> None:
     st.rerun()
 
 # ─────────────────────────────────────────────────────────────
-# 5. INTERFAZ EN PESTAÑAS
+# 5. INTERFAZ
 # ─────────────────────────────────────────────────────────────
 st.title("🚁 Control de fumigación")
 if not LUMINA_OK:
@@ -182,7 +191,7 @@ with tab_reg:
             try:
                 guardar_vuelo(fecha, cliente, cultivo, hectareas, precio, notas)
             except Exception as exc:
-                st.error(f"No se pudo guardar. ({exc})")
+                st.error(f"No se pudo guardar. Revisa tu conexión e intenta de nuevo. ({exc})")
             else:
                 terminar_guardado(f"Vuelo guardado: {cliente} · {money(total)}")
 
@@ -203,7 +212,7 @@ with tab_reg:
             try:
                 guardar_abono(fecha, cliente, monto, metodo, notas)
             except Exception as exc:
-                st.error(f"No se pudo guardar. ({exc})")
+                st.error(f"No se pudo guardar. Revisa tu conexión e intenta de nuevo. ({exc})")
             else:
                 terminar_guardado(f"Abono guardado: {cliente} · {money(monto)}")
 
@@ -218,53 +227,51 @@ with tab_reg:
             try:
                 guardar_gasto(fecha, tipo_gasto, monto, notas)
             except Exception as exc:
-                st.error(f"No se pudo guardar. ({exc})")
+                st.error(f"No se pudo guardar. Revisa tu conexión e intenta de nuevo. ({exc})")
             else:
                 terminar_guardado(f"Gasto guardado: {tipo_gasto} · {money(monto)}")
 
-# ── 👤 ESTADO DE CUENTA (Control Interno por Cliente) ────────
+# ── 👤 ESTADO DE CUENTA ──────────────────────────────────────
 with tab_cta:
-    st.header("👥 Control Interno por Cliente")
     if not clientes:
-        st.info("Aún no hay clientes registrados.")
+        st.info("Aún no hay clientes. Registra el primer vuelo en la pestaña 📝 Registro.")
     else:
-        cli = st.selectbox("Selecciona un cliente para ver su historial:", clientes, key="cli_cuenta")
-        historial = ops[ops["Cliente"].astype(str).str.strip() == cli].copy()
-        
-        if not historial.empty:
-            # Organizar la tabla al estilo Excel
-            historial = historial.sort_values("Fecha", ascending=False)
-            historial['DEBE (Cargos)'] = historial['Debe']
-            historial['HABER (Abonos)'] = historial['Haber']
-            
-            # Mostrar tabla
-            tabla_mostrar = historial[['Fecha', 'Concepto', 'Hectareas', 'Costo_HA', 'DEBE (Cargos)', 'HABER (Abonos)']]
-            st.dataframe(tabla_mostrar, hide_index=True, use_container_width=True)
-            
-            # Cálculo de saldo
-            debe = historial["DEBE (Cargos)"].sum()
-            haber = historial["HABER (Abonos)"].sum()
-            saldo = debe - haber
+        cli = st.selectbox("Cliente", clientes, key="cli_cuenta")
+        h = ops[ops["Cliente"].astype(str).str.strip() == cli].sort_values("Fecha", ascending=False)
+        debe, haber = h["Debe"].sum(), h["Haber"].sum()
+        saldo = debe - haber
 
-            if saldo > 0.005:
-                card("Saldo pendiente por cobrar", money(saldo), "saldo")
-            else:
-                card("Estado del cliente", "Al corriente ✔" if abs(saldo) <= 0.005 else f"A favor {money(-saldo)}", "ok")
+        if saldo > 0.005:
+            card("Saldo pendiente", money(saldo), "saldo")
         else:
-            st.info("Este cliente no tiene movimientos.")
+            card("Saldo pendiente", "Al corriente ✔" if abs(saldo) <= 0.005 else f"A favor {money(-saldo)}", "ok")
+        c1, c2 = st.columns(2)
+        with c1: card("Total trabajado", money(debe))
+        with c2: card("Total abonado", money(haber), "ok")
 
-# ── 📊 FINANZAS (Resumen financiero y utilidades) ────────────
+        st.subheader("Historial")
+        if h.empty:
+            st.info("Este cliente no tiene movimientos.")
+        for _, r in h.iterrows():
+            es_cargo = r["Debe"] > 0
+            monto = r["Debe"] if es_cargo else r["Haber"]
+            f = r["Fecha"].strftime("%d/%m/%Y") if pd.notna(r["Fecha"]) else "Sin fecha"
+            st.markdown(
+                f'<div class="mov"><div><div class="t">{html.escape(str(r["Concepto"]))}</div>'
+                f'<div class="f">{f}</div></div>'
+                f'<div class="m {"cargo" if es_cargo else "abono"}">{"+" if es_cargo else "−"}{money(monto)}</div></div>',
+                unsafe_allow_html=True)
+
+# ── 📊 FINANZAS Y CONTADOR ───────────────────────────────────
 with tab_fin:
-    st.header("📊 Resumen Financiero")
     ingresos = ops["Haber"].sum()          
     total_gastos = gastos["Importe"].sum() 
     utilidad = ingresos - total_gastos
     por_cobrar = ops["Debe"].sum() - ops["Haber"].sum()
 
-    card("Ingresos Reales (Abonos)", money(ingresos), "ok")
-    card("Gastos Totales", money(total_gastos))
-    card("Utilidad Neta", money(utilidad), "total")
-    
+    card("Ingresos cobrados", money(ingresos), "ok")
+    card("Gastos totales", money(total_gastos))
+    card("Utilidad neta", money(utilidad), "total")
     if utilidad < 0:
         st.warning("Los gastos superan lo cobrado. La pérdida se reparte con el mismo porcentaje.")
 
@@ -274,10 +281,15 @@ with tab_fin:
     with r2: card(f"Erick · {PCT_ERICK:.0%}", money(utilidad * PCT_ERICK))
     st.caption(f"Por cobrar a clientes (no incluido en la utilidad): {money(por_cobrar)}")
 
-    st.divider()
     st.subheader("Descargar datos")
     stamp = date.today().isoformat()
     st.download_button("⬇️ Operaciones (CSV)", ops.to_csv(index=False).encode("utf-8-sig"),
                        f"operaciones_{stamp}.csv", "text/csv", key="dl_ops")
     st.download_button("⬇ Gastos (CSV)", gastos.to_csv(index=False).encode("utf-8-sig"),
                        f"gastos_{stamp}.csv", "text/csv", key="dl_gas")
+    resumen = pd.DataFrame({
+        "Concepto": ["Ingresos cobrados", "Gastos totales", "Utilidad neta",
+                     f"Osmar ({PCT_OSMAR:.0%})", f"Erick ({PCT_ERICK:.0%})", "Por cobrar"],
+        "Monto": [ingresos, total_gastos, utilidad, utilidad * PCT_OSMAR, utilidad * PCT_ERICK, por_cobrar]})
+    st.download_button("⬇️ Resumen y reparto (CSV)", resumen.to_csv(index=False).encode("utf-8-sig"),
+                       f"resumen_{stamp}.csv", "text/csv", key="dl_res")
