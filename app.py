@@ -337,8 +337,8 @@ if not df_ops.empty:
     historial = df_ops[df_ops['Cliente'] == cliente_seleccionado].copy()
     
     # Crear las columnas de DEBE y HABER
-    historial['DEBE (Cargos)'] = historial.apply(lambda x: x['Importe'] if x['Tipo'] == 'Vuelo' else 0, axis=1)
-    historial['HABER (Abonos)'] = historial.apply(lambda x: x['Importe'] if x['Tipo'] == 'Abono' else 0, axis=1)
+    historial['DEBE (Cargos)'] = historial['Debe']
+    historial['HABER (Abonos)'] = historial['Haber']
     
     # Mostrar la tabla limpia
     tabla_mostrar = historial[['Fecha', 'Concepto', 'Hectareas', 'Costo_ha', 'DEBE (Cargos)', 'HABER (Abonos)']]
