@@ -298,3 +298,55 @@ with tab_fin:
         "Monto": [ingresos, total_gastos, utilidad, utilidad * PCT_OSMAR, utilidad * PCT_ERICK, por_cobrar]})
     st.download_button("⬇️ Resumen y reparto (CSV)", resumen.to_csv(index=False).encode("utf-8-sig"),
                        f"resumen_{stamp}.csv", "text/csv", key="dl_res")
+    import streamlit as st
+import pandas as pd
+import lumina # Asumiendo que así conectaste tu base
+
+# Leer las bases
+df_ops = lumina.obtener_operaciones()
+df_gastos = lumina.obtener_gastos()
+
+st.header("📊 Resumen Financiero y Utilidades")
+
+# 1. CÁLCULO DE UTILIDADES Y REPARTO 60/40
+ingresos_totales = df_ops[df_ops['Tipo'] == 'Abono']['Importe'].sum()
+gastos_totales = df_gastos['Importe'].sum()
+utilidad_neta = ingresos_totales - gastos_totales
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Ingresos Reales (Abonos)", f"${ingresos_totales:,.2f}")
+col2.metric("Gastos Totales", f"${gastos_totales:,.2f}")
+col3.metric("Utilidad o Pérdida", f"${utilidad_neta:,.2f}")
+
+st.subheader("Reparto de Utilidades")
+c1, c2 = st.columns(2)
+c1.success(f"**OSMAR (60%):** ${utilidad_neta * 0.60:,.2f}")
+c2.info(f"**ERICK (40%):** ${utilidad_neta * 0.40:,.2f}")
+
+st.divider()
+
+# 2. ESTADO DE CUENTA POR CLIENTE (Recreando las pestañas del Excel)
+st.header("👥 Control Interno por Cliente (Debe / Haber / Saldo)")
+
+if not df_ops.empty:
+    # Agrupar cálculos por cliente
+    clientes = df_ops['Cliente'].unique()
+    cliente_seleccionado = st.selectbox("Selecciona un cliente para ver su historial:", clientes)
+    
+    # Filtrar solo la información del cliente seleccionado
+    historial = df_ops[df_ops['Cliente'] == cliente_seleccionado].copy()
+    
+    # Crear las columnas de DEBE y HABER
+    historial['DEBE (Cargos)'] = historial.apply(lambda x: x['Importe'] if x['Tipo'] == 'Vuelo' else 0, axis=1)
+    historial['HABER (Abonos)'] = historial.apply(lambda x: x['Importe'] if x['Tipo'] == 'Abono' else 0, axis=1)
+    
+    # Mostrar la tabla limpia
+    tabla_mostrar = historial[['Fecha', 'Concepto', 'Hectareas', 'Costo_ha', 'DEBE (Cargos)', 'HABER (Abonos)']]
+    st.dataframe(tabla_mostrar, hide_index=True, use_container_width=True)
+    
+    # Calcular y mostrar el Saldo Final
+    total_debe = historial['DEBE (Cargos)'].sum()
+    total_haber = historial['HABER (Abonos)'].sum()
+    saldo_pendiente = total_debe - total_haber
+    
+    st.warning(f"**SALDO PENDIENTE:** ${saldo_pendiente:,.2f}")
