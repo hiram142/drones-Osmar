@@ -341,7 +341,7 @@ if not df_ops.empty:
     historial['HABER (Abonos)'] = historial['Haber']
     
     # Mostrar la tabla limpia
-    tabla_mostrar = historial[['Fecha', 'Concepto', 'Hectareas', 'Costo_ha', 'DEBE (Cargos)', 'HABER (Abonos)']]
+    tabla_mostrar = historial[['Fecha', 'Concepto', 'Hectareas', 'Costo_HA', 'DEBE (Cargos)', 'HABER (Abonos)']]
     st.dataframe(tabla_mostrar, hide_index=True, use_container_width=True)
     
     # Calcular y mostrar el Saldo Final
