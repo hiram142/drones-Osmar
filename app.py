@@ -281,15 +281,40 @@ with tab_fin:
     with r2: card(f"Erick · {PCT_ERICK:.1%}", money(utilidad * PCT_ERICK))
     st.caption(f"Por cobrar a clientes (no incluido en la utilidad): {money(por_cobrar)}")
 
-    st.subheader("Descargar datos")
-    stamp = date.today().isoformat()
-    st.download_button("⬇️ Operaciones (CSV)", ops.to_csv(index=False).encode("utf-8-sig"),
-                       f"operaciones_{stamp}.csv", "text/csv", key="dl_ops")
-    st.download_button("⬇ Gastos (CSV)", gastos.to_csv(index=False).encode("utf-8-sig"),
-                       f"gastos_{stamp}.csv", "text/csv", key="dl_gas")
-    resumen = pd.DataFrame({
-        "Concepto": ["Ingresos cobrados", "Gastos totales", "Utilidad neta",
-                     f"Osmar ({PCT_OSMAR:.1%})", f"Erick ({PCT_ERICK:.1%})", "Por cobrar"],
-        "Monto": [ingresos, total_gastos, utilidad, utilidad * PCT_OSMAR, utilidad * PCT_ERICK, por_cobrar]})
-    st.download_button("⬇️ Resumen y reparto (CSV)", resumen.to_csv(index=False).encode("utf-8-sig"),
-                       f"resumen_{stamp}.csv", "text/csv", key="dl_res")
+    st.subheader("Descargar datos para el Contador")
+    
+    # 1. Juntar todas las fechas para saber qué meses existen en la base de datos
+    fechas_todas = pd.concat([ops["Fecha"], gastos["Fecha"]]).dropna()
+    
+    if not fechas_todas.empty:
+        # 2. Crear lista de meses únicos (Formato: YYYY-MM) del más nuevo al más viejo
+        meses_disp = sorted(fechas_todas.dt.strftime("%Y-%m").unique(), reverse=True)
+        
+        # 3. Mostrar un menú desplegable para que Osmar elija el mes
+        mes_elegido = st.selectbox("Selecciona el mes a descargar:", meses_disp)
+        
+        # 4. Filtrar las tablas (DataFrames) exactamente por el mes seleccionado
+        ops_mes = ops[ops["Fecha"].dt.strftime("%Y-%m") == mes_elegido]
+        gas_mes = gastos[gastos["Fecha"].dt.strftime("%Y-%m") == mes_elegido]
+        
+        # 5. Recalcular las ganancias EXCLUSIVAS de ese mes para el archivo resumen
+        ing_mes = ops_mes["Haber"].sum()
+        gas_tot_mes = gas_mes["Importe"].sum()
+        ut_mes = ing_mes - gas_tot_mes
+        cxc_mes = ops_mes["Debe"].sum() - ops_mes["Haber"].sum()
+        
+        resumen_mes = pd.DataFrame({
+            "Concepto": ["Ingresos cobrados", "Gastos totales", "Utilidad neta",
+                         f"Osmar ({PCT_OSMAR:.1%})", f"Erick ({PCT_ERICK:.1%})", "Por cobrar"],
+            "Monto": [ing_mes, gas_tot_mes, ut_mes, ut_mes * PCT_OSMAR, ut_mes * PCT_ERICK, cxc_mes]
+        })
+
+        # 6. Botones de descarga dinámicos (los archivos se llamarán ej: "operaciones_2026-09.csv")
+        st.download_button(f"⬇️ Operaciones ({mes_elegido})", ops_mes.to_csv(index=False).encode("utf-8-sig"),
+                           f"operaciones_{mes_elegido}.csv", "text/csv", key="dl_ops_mes")
+        st.download_button(f"⬇️️ Gastos ({mes_elegido})", gas_mes.to_csv(index=False).encode("utf-8-sig"),
+                           f"gastos_{mes_elegido}.csv", "text/csv", key="dl_gas_mes")
+        st.download_button(f"⬇️ Resumen y reparto ({mes_elegido})", resumen_mes.to_csv(index=False).encode("utf-8-sig"),
+                           f"resumen_{mes_elegido}.csv", "text/csv", key="dl_res_mes")
+    else:
+        st.info("Aún no hay datos registrados para descargar.")
