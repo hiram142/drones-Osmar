@@ -13,8 +13,8 @@ import streamlit as st
 # ─────────────────────────────────────────────────────────────
 # 1. CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────
-PCT_OSMAR = 0.60
-PCT_ERICK = 0.40
+PCT_OSMAR = 0.715
+PCT_ERICK = 0.285
 TIPOS_GASTO = ["Combustible", "Agroquímicos", "Mantenimiento", "Baterías / refacciones",
                "Viáticos", "Sueldos / ayudantes", "Otro"]
 METODOS_PAGO = ["Efectivo", "Transferencia", "Cheque", "Otro"]
@@ -277,8 +277,8 @@ with tab_fin:
 
     st.subheader("Reparto de utilidad")
     r1, r2 = st.columns(2)
-    with r1: card(f"Osmar · {PCT_OSMAR:.0%}", money(utilidad * PCT_OSMAR))
-    with r2: card(f"Erick · {PCT_ERICK:.0%}", money(utilidad * PCT_ERICK))
+    with r1: card(f"Osmar · {PCT_OSMAR:.1%}", money(utilidad * PCT_OSMAR))
+    with r2: card(f"Erick · {PCT_ERICK:.1%}", money(utilidad * PCT_ERICK))
     st.caption(f"Por cobrar a clientes (no incluido en la utilidad): {money(por_cobrar)}")
 
     st.subheader("Descargar datos")
@@ -289,7 +289,7 @@ with tab_fin:
                        f"gastos_{stamp}.csv", "text/csv", key="dl_gas")
     resumen = pd.DataFrame({
         "Concepto": ["Ingresos cobrados", "Gastos totales", "Utilidad neta",
-                     f"Osmar ({PCT_OSMAR:.0%})", f"Erick ({PCT_ERICK:.0%})", "Por cobrar"],
+                     f"Osmar ({PCT_OSMAR:.1%})", f"Erick ({PCT_ERICK:.1%})", "Por cobrar"],
         "Monto": [ingresos, total_gastos, utilidad, utilidad * PCT_OSMAR, utilidad * PCT_ERICK, por_cobrar]})
     st.download_button("⬇️ Resumen y reparto (CSV)", resumen.to_csv(index=False).encode("utf-8-sig"),
                        f"resumen_{stamp}.csv", "text/csv", key="dl_res")
